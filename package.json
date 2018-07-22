@@ -1,0 +1,20 @@
+{
+  "name": "bitmex-trading-engine",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/index.js",
+  "scripts": {
+    "start-dev": "nodemon src/index.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bitmex-realtime-api": "^0.3.0",
+    "cron": "^1.3.0",
+    "firebase": "^5.3.0",
+    "moment": "^2.22.2",
+    "nodemon": "^1.17.5",
+    "request": "^2.87.0",
+    "technicalindicators": "^1.1.11"
+  }
+}
