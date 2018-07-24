@@ -1,8 +1,6 @@
 // public deps
 const firebase = require('firebase')
 const bitmex = require('bitmex-realtime-api')
-const moment = require('moment')
-const cron = require('cron').CronJob
 const util = require('util')
 
 const config = require('./config')
@@ -10,12 +8,6 @@ const config = require('./config')
 if(!config) return console.error( 'config settings missing, exiting.' )
 
 const methods = require('./methods')
-
-// vars
-const timezone = 'Europe/London'
-const initSettings = {
-    deleteCollectionsOnInit: true,
-}
 
 // describe candles
 let candles = {
@@ -36,65 +28,40 @@ let candles = {
             period: 20,
             values: [],
         }
-    }
+    },
+    seeded: false,
 }
 
 // a better console
-const x = log => { console.log( util.inspect(log, false, 9, true) ) }
+global.z = log => { console.log( util.inspect(log, false, 9, true) ) }
 
 // init firebase
 const app = firebase.initializeApp(config.firebase)
 const db = app.firestore()
 db.settings({ timestampsInSnapshots: true })
-initSettings.db = db
 
 // let's do this
-!(() => {
+!(async () => {
 
-    //methods.init(initSettings, candles)
-
-    // // init db in service 
-    // Promise.all().then(async () => {
-    //     console.log('go')
-        
-        
-    //     let promises = []
-    //     let response
-
-    //     candles.durations.forEach(item => {    
-            
-    //         promises.push( methods.fetchCandleStickData(candles, item) ) 
-    //     })
-
-    //     // fetch historical candle stick data first
-    //     try { response = await Promise.all(promises) } catch(err){ console.error(err) }
-
-    //     if(!response) return console.error( 'no candlestick data' )
-        
-    //     // promise all returns array of all promises (duplicated)
-    //     candles = response.pop()
-        
-    //     // run next tick 
-    //     promises = []
-    //     response = null
-    //     candles.durations.forEach(item => {    
-            
-    //         promises.push( methods.calculateNextTick(candles, item) )
-    //     })
-
-    //     try { response = await Promise.all(promises) } catch(err){ console.error(err) }
+    // passively purge db, we'll check it's completion upon initial seed
+    methods.purge(db, candles)
     
-    //     if(!response) return console.error( 'no next tick candle stick data' )
-        
-    //     // save to db
-    //     candles = response.pop()
-    //     response = null
-        
-    //     try { response = await methods.save(candles) } catch(err){ console.error(err) }
+    // validate purge
+    try { await methods.validatePurge(candles) } catch(err){ return console.error( 'could not validate db purge' ) }
+    
+    // store candles in service
+    methods.candles = candles
 
-    //     if(!response) return console.error( 'could not save candle stick data' )
+    // seed initial to kick us off
+    try { await methods.seed(1) } catch(err){ return console.error(err) }
 
-    //     console.info( 'saved to db successfully' )
+    // start cron
+    methods.startCron()
 
-    // }).catch(err => console.error( 'something\'s gone wrong' ))
+    // seed historical
+    try { await methods.seed(candles.count) } catch(err){ return console.error(err) }
+
+    // attach db listener
+    methods.attachListener()
+
 })()
