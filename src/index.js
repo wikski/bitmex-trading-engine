@@ -1,6 +1,5 @@
 // public deps
 const firebase = require('firebase')
-const bitmex = require('bitmex-realtime-api')
 const util = require('util')
 
 const config = require('./config')
@@ -60,8 +59,5 @@ db.settings({ timestampsInSnapshots: true })
 
     // seed historical
     try { await methods.seed(candles.count) } catch(err){ return console.error(err) }
-
-    // attach db listener
-    methods.attachListener()
 
 })()

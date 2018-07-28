@@ -123,7 +123,7 @@ const _methods = {
             str += JSON.stringify(data)
         }        
         
-        const signature = crypto.createHmac('sha256', config.bitmex.secret).update(str).digest('hex');
+        const signature = crypto.createHmac('sha256', config.bitmex.secret).update(str).digest('hex')
         
         const headers = {
             'content-type' : 'application/json',
@@ -135,8 +135,8 @@ const _methods = {
         }
         const options = {
             headers, 
-            url: config.bitmex.url + path,
-            method: verb,
+            url: (config.bitmex.testnet ? config.bitmex.url.replace(/https:\/\/www./,'https://testnet.') : config.bitmex.url) + path,
+            method: verb, 
         }
         
         return new Promise((resolve, reject) => {
@@ -241,7 +241,7 @@ const _methods = {
             if(response === '[]') return reject('no bitmex data') 
             
             try {
-
+                
                 JSON.parse(response)            
             
             } catch (err){ return reject(err) }          
@@ -250,7 +250,7 @@ const _methods = {
             
             // saniitize        
             candles = _methods.sanitizeCandleStickData(candles)
-                        
+            
             return resolve(candles)
         })
     },
@@ -283,6 +283,17 @@ const _methods = {
         _methods.calculateBollingerBands(duration)
     },
 
+    updateListener: (duration, timestamp) => {
+        // notify service of udpate
+
+        const item = {
+            timestamp,
+            updatedAt: moment().utc().format()
+        }
+
+        return _methods.db.collection('listeners').doc(`candles-${duration}`).set(item)
+    },
+
     save: duration => {
 
         const durationIndex = _methods.candles.data.findIndex(item => item.duration === duration)
@@ -300,7 +311,7 @@ const _methods = {
                 
                 const batch = _methods.db.batch()
 
-                item.data.forEach(iitem => { 
+                item.data.forEach(iitem => {
 
                     // add updateAt
                     const updatedAt = moment().utc().format()                
@@ -313,15 +324,13 @@ const _methods = {
 
                 if(item.data.length > 1){
                 
-                    console.info( `${item.duration} candle data ranging from ${item.data[0].timestamp} to ${item.data[item.data.length - 1].timestamp} send to firestore` )
-                                        
-                    _methods.candles.seeded = true
+                    console.info( `${item.duration} candle data ranging from ${item.data[0].timestamp} to ${item.data[item.data.length - 1].timestamp} send to firestore` )                                                        
 
                 } else {
 
                     console.info( `${item.duration} candle for ${item.data[0].timestamp} sent to firestore` )
                 }
-
+                
                 promises.push( batch.commit() ) 
             })
 
@@ -329,12 +338,28 @@ const _methods = {
             // individual timeframe, only save last item
             
             _methods.processTechnicalIndicators(duration)
-
-            const item = _methods.candles.data[durationIndex].data[_methods.candles.data[durationIndex].data.length - 1]
-
+ 
+            const item = _methods.candles.data[durationIndex].data.pop()
+            
             console.info( `${duration} candle for ${item.timestamp} sent to firestore` )
 
-            _methods.db.collection(`candles-${duration}`).doc(item.timestamp).set(item)
+            promises.push( _methods.db.collection(`candles-${duration}`).doc(item.timestamp).set(item) )
+            
+            // update listener as well            
+            if(_methods.candles.seeded){
+                
+                promises.push( _methods.updateListener(duration, item.timestamp) )
+            }
+            
+            // mark seed complete
+            if(_methods.candles.data[durationIndex].data.length === _methods.candles.count){
+
+                _methods.candles.seeded = true
+            }            
+        }
+
+        if(duration === '1m'){
+            //z( _methods.candles.data[0].data )
         }
 
         return Promise.all(promises)
@@ -361,7 +386,7 @@ const _methods = {
 
         new cron(`${config.cronBuffer} * * * * *`, async () => {  
             
-            const now = moment().tz(config.timezone).startOf('m')
+            const now = moment().tz(config.timezone).startOf('m')            
             const minutes = now.clone().format('mm').split('').map(item => Number(item))            
             const hours = now.clone().format('HH')
             
@@ -369,60 +394,28 @@ const _methods = {
             if(_methods.candles.durations.some(item => item === '1m')){                
 
                 try { await _methods.calculateNextTick(_methods.candles, '1m') } catch(err){ console.error(err) }
-            
-                if(_methods.candles.seeded){
-                    // execute strategies
-
-                }
             }
    
             // 5 minute ticker
             if(_methods.candles.durations.some(item => item === '5m') && [0, 5].some(item => item === minutes[1])){
                 
                 try { await _methods.calculateNextTick(_methods.candles, '5m') } catch(err){ console.error(err) }
-
-                if(_methods.candles.seeded){
-                    // execute strategies
-
-                }
             }    
  
             // 1 hour ticker
             if(_methods.candles.durations.some(item => item === '1h') && minutes[0] === 0 && minutes[1] === 0){
 
                 try { await _methods.calculateNextTick(_methods.candles, '1h') } catch(err){ console.error(err) }
-
-                if(_methods.candles.seeded){
-                    // execute strategies
-
-                }
             } 
             
             // 1 day ticker
             if(_methods.candles.durations.some(item => item === '1d') && hours === '00' && minutes[0] === 0 && minutes[1] === 0){
                 
                 try { await _methods.calculateNextTick(_methods.candles, '1d') } catch(err){ console.error(err) }
-
-                if(_methods.candles.seeded){
-                    // execute strategies
-
-                }
             }
             
         }, null, true, config.timezone)
     },
-
-    attachListener: () => {
-
-        const ref = _methods.db.collection('candles-1m').orderBy('timestamp').limit(1)
-        
-        ref.onSnapshot(snapshot => {
-
-            console.log(snapshot)
-        }, err => {
-            console.log(`Encountered error: ${err}`);
-          });
-    }
 }
 
 module.exports = _methods
